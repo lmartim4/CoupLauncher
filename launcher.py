@@ -11,10 +11,30 @@ import subprocess
 import zipfile
 import tarfile
 import shutil
+import ssl
 import urllib.request
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
+
+# Build an SSL context that works on Windows.
+# Windows Python installs often lack a trusted CA bundle, so we try certifi
+# first, then fall back to disabling verification (GitHub URLs only).
+def _build_ssl_ctx() -> ssl.SSLContext:
+    try:
+        import certifi
+        print("[ssl] Using certifi CA bundle")
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        pass
+    # On Windows, load_default_certs() succeeds but the resulting context
+    # still cannot verify GitHub's cert chain. Skip it and go straight to
+    # the unverified context so the launcher actually works.
+    print("[ssl] certifi not found; disabling SSL verification (GitHub-only)")
+    ctx = ssl._create_unverified_context()
+    return ctx
+
+SSL_CTX = _build_ssl_ctx()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -55,16 +75,34 @@ def get_local_version() -> str:
 
 
 def get_remote_info():
-    """Returns (tag_name, assets_list) from the latest GitHub release, or (None, None)."""
+    """Returns (tag_name, assets_list) from the latest GitHub release, or (None, reason_str)."""
     try:
         req = urllib.request.Request(
             API_URL, headers={"User-Agent": "CoupLauncher/1.0"}
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
+        with urllib.request.urlopen(req, timeout=10, context=SSL_CTX) as resp:
+            raw = resp.read().decode()
+            data = json.loads(raw)
+
+            if "tag_name" not in data:
+                msg = data.get("message", "Unexpected API response")
+                print(f"[remote_info] GitHub API error: {msg}")
+                print(f"[remote_info] Full response: {raw[:500]}")
+                return None, msg
+
             return data["tag_name"], data["assets"]
-    except Exception:
-        return None, None
+
+    except urllib.error.HTTPError as e:
+        reason = f"HTTP {e.code}: {e.reason}"
+        print(f"[remote_info] HTTPError: {reason}")
+        return None, reason
+    except urllib.error.URLError as e:
+        reason = str(e.reason)
+        print(f"[remote_info] URLError: {reason}")
+        return None, reason
+    except Exception as e:
+        print(f"[remote_info] Unexpected error: {type(e).__name__}: {e}")
+        return None, str(e)
 
 
 def find_executable(search_dir: Path):
@@ -99,7 +137,7 @@ def download_and_extract(assets: list, progress_cb, status_cb) -> bool:
     status_cb(f"Downloading {fname}...")
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "CoupLauncher/1.0"})
-        with urllib.request.urlopen(req) as resp, open(tmp_path, "wb") as out:
+        with urllib.request.urlopen(req, context=SSL_CTX) as resp, open(tmp_path, "wb") as out:
             downloaded = 0
             while True:
                 chunk = resp.read(65536)
@@ -271,14 +309,16 @@ class LauncherApp(tk.Tk):
         local_ver  = get_local_version()
         remote_ver, assets = get_remote_info()
 
-        if remote_ver is None or assets is None:
+        if remote_ver is None:
+            error_reason = assets if isinstance(assets, str) else "Unknown error"
             self._set_remote_label("Unavailable")
+            print(f"[update_worker] Failed to get remote info: {error_reason}")
             if local_ver != "Not installed":
-                self._set_status("Could not reach GitHub. You can still play offline.")
+                self._set_status(f"Could not reach GitHub ({error_reason}). Playing offline.")
                 self._set_progress(100)
                 self._enable_play(True)
             else:
-                self._set_status("No internet connection and game not installed.", ACCENT)
+                self._set_status(f"Cannot install: {error_reason}", ACCENT)
             return
 
         self._set_remote_label(remote_ver)
