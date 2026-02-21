@@ -324,8 +324,8 @@ def download_launcher_update(assets: list, progress_cb, status_cb) -> "Path | No
 def apply_launcher_update(pending_path: Path):
     """
     Replace the running launcher with the pending binary, then restart.
-    - Linux/macOS: overwrite in-place and exec (no restart gap needed).
-    - Windows: spawn a bat script that swaps after the process exits.
+    - Linux: atomic os.replace (rename) then exec in-place.
+    - Windows: spawn a detached bat script that swaps after the process exits.
     """
     current_exe = Path(sys.executable)
 
@@ -346,11 +346,16 @@ def apply_launcher_update(pending_path: Path):
             creationflags=_NO_WINDOW | _DETACHED,
             close_fds=True,
         )
-        sys.exit(0)
+        # os._exit terminates the whole process immediately.
+        # sys.exit only raises SystemExit in the calling thread, leaving the
+        # process alive and the .exe file locked when the bat runs.
+        os._exit(0)
     else:
-        # Linux: safe to overwrite a running binary (kernel holds the old inode open).
-        shutil.copy2(str(pending_path), str(current_exe))
-        pending_path.unlink(missing_ok=True)
+        # os.replace is an atomic rename within the same filesystem.
+        # Unlike shutil.copy2 it never writes to the executing inode, so it
+        # avoids ETXTBSY on Linux kernels that block writes to running binaries.
+        os.replace(str(pending_path), str(current_exe))
+        current_exe.chmod(0o755)
         os.execv(str(current_exe), sys.argv)
 
 # ---------------------------------------------------------------------------
