@@ -9,109 +9,63 @@ permissions:
   contents: write
 
 jobs:
-  build-linux:
-    name: Build Linux (manylinux)
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: dist-linux
+          - os: windows-latest
+            artifact: dist-windows
+          - os: macos-13
+            artifact: dist-macos
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tkinter ships with Python on Windows/macOS but needs a system package on Linux.
+      - name: Install Tkinter (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y python3-tk
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build launcher
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: python build_launcher.py
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: build_output/*
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build inside manylinux2014 container
-        env:
-          RELEASE_VERSION: ${{ github.ref_name }}
-        run: |
-          docker run --rm \
-            -v "$GITHUB_WORKSPACE:/workspace" \
-            -w /workspace \
-            -e RELEASE_VERSION="$RELEASE_VERSION" \
-            quay.io/pypa/manylinux_2_28_x86_64 \
-            bash -c "
-              set -e
-              dnf install -y python3.11 python3.11-tkinter
-              python3.11 -m ensurepip --upgrade
-              python3.11 -m pip install --upgrade pip
-              python3.11 -m pip install pyinstaller
-              python3.11 build_launcher.py
-            "
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: CoupLauncher-Linux-${{ github.ref_name }}
-          path: build_output/*
-          if-no-files-found: error
+          path: artifacts
+          merge-multiple: true
 
-      - name: Publish to GitHub release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build_output/*
-          generate_release_notes: true
-
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Build launcher
-        env:
-          RELEASE_VERSION: ${{ github.ref_name }}
-        run: python build_launcher.py
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: CoupLauncher-Windows-${{ github.ref_name }}
-          path: build_output/*
-          if-no-files-found: error
-
-      - name: Publish to GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build_output/*
-          generate_release_notes: true
-
-  build-macos:
-    name: Build macOS
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Build launcher
-        env:
-          RELEASE_VERSION: ${{ github.ref_name }}
-        run: python build_launcher.py
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: CoupLauncher-macOS-${{ github.ref_name }}
-          path: build_output/*
-          if-no-files-found: error
-
-      - name: Publish to GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build_output/*
+          files: artifacts/*
           generate_release_notes: true
