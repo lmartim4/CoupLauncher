@@ -10,40 +10,29 @@ permissions:
 
 jobs:
   build-linux:
-    name: Build portable Linux binary
+    name: Build Linux (manylinux)
     runs-on: ubuntu-latest
-
-    container:
-      image: quay.io/pypa/manylinux2014_x86_64
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Python 3.11
-        run: |
-          set -e
-          /opt/python/cp311-cp311/bin/python -m ensurepip --upgrade
-          ln -sf /opt/python/cp311-cp311/bin/python /usr/local/bin/python3.11
-          ln -sf /opt/python/cp311-cp311/bin/pip    /usr/local/bin/pip3.11
-
-      - name: Install pip dependencies
-        run: |
-          set -e
-          pip3.11 install --upgrade pip
-          pip3.11 install requests
-
-      - name: Install PyInstaller
-        run: |
-          set -e
-          pip3.11 install pyinstaller
-
-      - name: Build launcher
+      - name: Build inside manylinux2014 container
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
         run: |
-          set -e
-          python3.11 build_launcher.py
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            -e RELEASE_VERSION="$RELEASE_VERSION" \
+            quay.io/pypa/manylinux_2_28_x86_64 \
+            bash -c "
+              set -e
+              dnf install -y tk-devel
+              /opt/python/cp311-cp311/bin/pip install --upgrade pip
+              /opt/python/cp311-cp311/bin/pip install pyinstaller
+              /opt/python/cp311-cp311/bin/python build_launcher.py
+            "
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -52,7 +41,75 @@ jobs:
           path: build_output/*
           if-no-files-found: error
 
-      - name: Publish GitHub release
+      - name: Publish to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build_output/*
+          generate_release_notes: true
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build launcher
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: python build_launcher.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoupLauncher-Windows-${{ github.ref_name }}
+          path: build_output/*
+          if-no-files-found: error
+
+      - name: Publish to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build_output/*
+          generate_release_notes: true
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build launcher
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: python build_launcher.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoupLauncher-macOS-${{ github.ref_name }}
+          path: build_output/*
+          if-no-files-found: error
+
+      - name: Publish to GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: build_output/*
