@@ -9,20 +9,56 @@ permissions:
   contents: write
 
 jobs:
+  # Runs inside a manylinux_2_28 container so the binary only requires glibc >= 2.28.
+  # This covers Ubuntu 20.04 (glibc 2.31), Debian 11, Fedora 33+, etc.
+  # Building on ubuntu-22.04 directly would produce a binary that needs glibc 2.35.
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build inside manylinux_2_28 container
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            -e RELEASE_VERSION="$RELEASE_VERSION" \
+            quay.io/pypa/manylinux_2_28_x86_64 \
+            bash -c "
+              set -e
+              dnf install -y python3.11 python3.11-tkinter
+              python3.11 -m ensurepip --upgrade
+              python3.11 -m pip install --upgrade pip
+              python3.11 -m pip install pyinstaller
+              python3.11 build_launcher.py
+            "
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: build_output/*
+          if-no-files-found: error
+
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            artifact: dist-linux
           - os: windows-latest
+            name: Windows
             artifact: dist-windows
           - os: macos-latest
+            name: macOS arm64
             artifact: dist-macos-arm64
             target_arch: arm64
           - os: macos-latest
+            name: macOS x86_64
             artifact: dist-macos-x86_64
             target_arch: x86_64
 
@@ -31,15 +67,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Tkinter ships with Python on Windows/macOS but needs a system package on Linux.
-      - name: Install Tkinter (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y python3-tk
-
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install PyInstaller
         run: pip install pyinstaller
@@ -59,7 +90,7 @@ jobs:
 
   release:
     name: Publish Release
-    needs: build
+    needs: [build-linux, build]
     runs-on: ubuntu-latest
 
     steps:
