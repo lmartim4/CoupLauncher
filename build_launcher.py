@@ -30,6 +30,10 @@ VERSION      = os.environ.get("RELEASE_VERSION", "v0.0.0-dev")
 def build() -> None:
     print(f"Building {APP_NAME} {VERSION} for {PLATFORM}...")
 
+    # Inject launcher version so the frozen binary knows its own version
+    version_file = Path("_version.py")
+    version_file.write_text(f'LAUNCHER_VERSION = "{VERSION}"\n', encoding="utf-8")
+
     # Clean previous intermediate artifacts
     for d in ("dist", "build", "__pycache__"):
         if Path(d).exists():
@@ -46,8 +50,13 @@ def build() -> None:
         ENTRY_POINT,
     ]
 
-    subprocess.run(pyinstaller_cmd, check=True)
-    _package()
+    try:
+        subprocess.run(pyinstaller_cmd, check=True)
+        _package()
+    finally:
+        # Remove the generated version file so it doesn't linger in the source tree
+        if version_file.exists():
+            version_file.unlink()
     print("Build complete.")
 
 

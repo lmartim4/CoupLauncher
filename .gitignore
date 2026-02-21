@@ -1,1 +1,6 @@
+.venv
 game_files/
+build
+dist
+build_output
+_version.py
