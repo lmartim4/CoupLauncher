@@ -14,6 +14,7 @@ import zipfile
 import tarfile
 import shutil
 import ssl
+import random
 import urllib.request
 from pathlib import Path
 import tkinter as tk
@@ -64,6 +65,43 @@ else:
 
 GAME_DIR     = BASE_DIR / "game_files"
 VERSION_FILE = GAME_DIR / "version.txt"
+
+# ---------------------------------------------------------------------------
+# Coup tips (shown randomly at the bottom of the launcher)
+# ---------------------------------------------------------------------------
+
+COUP_TIPS = [
+    "If you have 10 or more coins, you MUST Coup. Plan your economy around this.",
+    "The Duke is the backbone of any economy. Claiming it early discourages Foreign Aid.",
+    "Bluffing the Contessa right after losing a card surprises opponents who think you're weak.",
+    "Watch the discard pile. If two Dukes are already dead, that Duke claim is a lie.",
+    "Saving up for a Coup is often safer than Assassinating — it can't be blocked or challenged.",
+    "The Ambassador is underrated. Swapping bad cards mid-game can completely reset your position.",
+    "Never reveal desperation. Confident body language (even in a digital game) sells the bluff.",
+    "Target the richest player before they reach 7 coins, not after.",
+    "If everyone is afraid to challenge you, you don't even need the card you're claiming.",
+    "Two-card players can afford risks. One-card players should play conservatively.",
+    "Claiming Captain on a player with only 1 coin is a tell — there's nothing to steal.",
+    "Let others eliminate each other early. Patience is a weapon.",
+    "If you've shown a real Duke before, claiming it again later is nearly unchallengeable.",
+    "The Assassin at 3 coins is terrifying. Don't let anyone sit at exactly 3 coins for long.",
+    "Challenging early in the game when stakes are low teaches you who bluffs under pressure.",
+    "A blocked action still cost your opponent their turn. Blocking is never wasted.",
+    "Claiming Ambassador when you have 6+ coins is suspicious — why not just Coup?",
+    "Keep mental notes of which cards opponents have revealed or lost. Information is power.",
+    "The first Coup of the game sets the tone. Make it a political statement, not just math.",
+    "If two players are allied, break it up fast — a 2v1 endgame is nearly impossible to win.",
+    "Calling a bluff is a gamble. Ask yourself: what do I lose if I'm wrong?",
+    "Foreign Aid is bait. Use it to find out who has (or claims) the Duke.",
+    "Sometimes doing nothing and taking 1 coin Income is the best move — don't telegraph plans.",
+    "A Captain claim pairs well with an Ambassador claim: one steals, the other refreshes.",
+    "In endgame, every challenge matters. Both players are fragile — force the risk onto them.",
+    "Losing a card on purpose can be a strategy if it hides your real remaining card.",
+    "Players who never bluff are predictable. Mix real and fake claims to stay unreadable.",
+    "Don't Assassinate the player who is about to Coup someone else — let them do your work.",
+    "If someone blocks your steal with a Captain, they probably have it. File that away.",
+    "The best liars believe their own lie. Commit fully or don't bluff at all.",
+]
 
 # ---------------------------------------------------------------------------
 # Colors
@@ -445,9 +483,19 @@ class LauncherApp(tk.Tk):
             command=self._on_play,
             state="disabled",
         )
-        self.btn_play.pack(pady=(0, 30))
+        self.btn_play.pack(pady=(0, 20))
 
-        self.geometry("440x540")
+        # ---- Tip of the day ----
+        tip_frame = tk.Frame(self, bg=CARD, padx=16, pady=10)
+        tip_frame.pack(fill="x", padx=40, pady=(0, 24))
+
+        tk.Label(tip_frame, text="TIP", font=("Arial", 7, "bold"),
+                 bg=CARD, fg=ACCENT).pack(anchor="w")
+        tk.Label(tip_frame, text=random.choice(COUP_TIPS),
+                 font=("Arial", 9), bg=CARD, fg=MUTED,
+                 wraplength=340, justify="left").pack(anchor="w")
+
+        self.geometry("440x600")
 
     def _center_window(self):
         self.update_idletasks()
