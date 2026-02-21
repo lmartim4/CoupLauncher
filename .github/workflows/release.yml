@@ -9,43 +9,50 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: Linux
-          - os: windows-latest
-            platform: Windows
-          - os: macos-latest
-            platform: macOS
+  build-linux:
+    name: Build portable Linux binary
+    runs-on: ubuntu-latest
+
+    container:
+      image: quay.io/pypa/manylinux2014_x86_64
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+      - name: Install Python 3.11
+        run: |
+          set -e
+          /opt/python/cp311-cp311/bin/python -m ensurepip --upgrade
+          ln -sf /opt/python/cp311-cp311/bin/python /usr/local/bin/python3.11
+          ln -sf /opt/python/cp311-cp311/bin/pip    /usr/local/bin/pip3.11
 
-      # tkinter is not always pre-installed on Ubuntu GitHub runners
-      - name: Install tkinter (Linux only)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y python3-tk
+      - name: Install pip dependencies
+        run: |
+          set -e
+          pip3.11 install --upgrade pip
+          pip3.11 install requests
 
-      - name: Install build dependencies
-        run: pip install pyinstaller
+      - name: Install PyInstaller
+        run: |
+          set -e
+          pip3.11 install pyinstaller
 
       - name: Build launcher
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
-        run: python build_launcher.py
+        run: |
+          set -e
+          python3.11 build_launcher.py
 
-      - name: Upload release artifacts
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoupLauncher-Linux-${{ github.ref_name }}
+          path: build_output/*
+          if-no-files-found: error
+
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: build_output/*
