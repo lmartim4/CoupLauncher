@@ -19,8 +19,12 @@ jobs:
             artifact: dist-linux
           - os: windows-latest
             artifact: dist-windows
-          - os: macos-13
-            artifact: dist-macos
+          - os: macos-latest
+            artifact: dist-macos-arm64
+            target_arch: arm64
+          - os: macos-latest
+            artifact: dist-macos-x86_64
+            target_arch: x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -43,6 +47,7 @@ jobs:
       - name: Build launcher
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
+          TARGET_ARCH: ${{ matrix.target_arch }}
         run: python build_launcher.py
 
       - name: Upload build artifact
